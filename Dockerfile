@@ -11,6 +11,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # ---- Copy application code ----
 COPY app ./app
 
+# ---- Create a non-root user and switch to it ----
+RUN useradd --create-home --shell /bin/bash appuser
+USER appuser
+
 # ---- Expose the port the app runs on ----
 EXPOSE 8000
 
