@@ -5,7 +5,7 @@ FROM python:3.12-slim
 WORKDIR /code
 
 # Upgrade pip to patch known vulnerabilities in the base image's bundled version
-RUN pip install --no-cache-dir --upgrade pip "setuptools>=78.1.1" "msgpack>=1.0.8"
+RUN pip install --no-cache-dir --upgrade --force-reinstall pip "setuptools>=78.1.1" "msgpack>=1.0.8"
 
 # ---- Install dependencies first (better layer caching) ----
 COPY requirements.txt .
