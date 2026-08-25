@@ -61,6 +61,12 @@ jobs:
       - name: Build Docker image
         run: docker build -t poc-application:${{ github.sha }} .
 
+      # ── DEBUG STEP ADDED HERE ──────────────────────────────────────────
+      - name: Debug — check actual installed versions
+        run: |
+          docker run --rm poc-application:${{ github.sha }} pip show setuptools msgpack
+      # ───────────────────────────────────────────────────────────────────
+
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.36.0
         with:
