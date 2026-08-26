@@ -98,3 +98,17 @@ jobs:
         run: |
           docker tag poc-application:${{ github.sha }} $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
+
+      - name: Update image tag in GitOps repo
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GITOPS_PAT: ${{ secrets.GITOPS_PAT }}
+        run: |
+          git clone https://x-access-token:${GITOPS_PAT}@github.com/atul-devops-lab/POC-application-gitops.git
+          cd POC-application-gitops
+          sed -i "s|poc-application:.*|poc-application:${{ github.sha }}|g" manifests/deployment.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifests/deployment.yaml
+          git commit -m "Update poc-application image to ${{ github.sha }}"
+          git push
