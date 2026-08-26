@@ -4,7 +4,8 @@ FROM python:3.12-slim
 # ---- Set working directory inside the container ----
 WORKDIR /code
 
-# Upgrade pip to patch known vulnerabilities in the base image's bundled version
+# Upgrade pip, setuptools, and msgpack to patch known vulnerabilities
+# present in the base image's bundled versions
 RUN pip install --no-cache-dir --upgrade --force-reinstall pip "setuptools>=78.1.1" "msgpack>=1.0.8"
 
 # ---- Install dependencies first (better layer caching) ----
