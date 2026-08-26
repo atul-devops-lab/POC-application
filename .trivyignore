@@ -1,0 +1,9 @@
+# False positives — confirmed via `pip show` in CI that the actual
+# installed setuptools/msgpack versions are already patched.
+# Trivy is picking up stale metadata left behind from the base image's
+# bundled ensurepip wheels, not the real installed packages.
+# Investigated and confirmed in PR #6.
+
+CVE-2025-47273
+GHSA-6v7p-g79w-8964
+CVE-2026-59890
