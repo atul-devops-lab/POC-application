@@ -6,7 +6,7 @@ WORKDIR /code
 
 # Upgrade pip, setuptools, and msgpack to patch known vulnerabilities
 # present in the base image's bundled versions
-RUN pip install --no-cache-dir --upgrade --force-reinstall pip "setuptools>=78.1.1" 
+RUN pip install --no-cache-dir --upgrade pip "setuptools>=78.1.1" 
 
 # ---- Install dependencies first (better layer caching) ----
 COPY requirements.txt .
