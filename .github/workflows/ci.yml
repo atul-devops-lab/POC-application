@@ -80,11 +80,6 @@ jobs:
           sarif_file: trivy-results.sarif
 
       - name: Generate SBOM
-        run: |
-          docker sbom poc-application:${{ github.sha }} --format cyclonedx-json > sbom.cyclonedx.json || \
-          (echo "docker sbom not available, using anchore action fallback" && exit 1)
-
-      - name: Generate SBOM (Anchore)
         uses: anchore/sbom-action@v0
         with:
           image: poc-application:${{ github.sha }}
