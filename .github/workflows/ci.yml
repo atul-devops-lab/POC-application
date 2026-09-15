@@ -79,6 +79,19 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
 
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: poc-application:${{ github.sha }}
+          format: cyclonedx-json
+          output-file: sbom.cyclonedx.json
+
+      - name: Upload SBOM as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cyclonedx.json
+
       - name: Configure AWS credentials via OIDC
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: aws-actions/configure-aws-credentials@v4
@@ -98,6 +111,27 @@ jobs:
         run: |
           docker tag poc-application:${{ github.sha }} $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
+
+      - name: Install Cosign
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (keyless, via GitHub OIDC)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+        run: |
+          cosign sign --yes ${ECR_REGISTRY}/${ECR_REPOSITORY}:${{ github.sha }}
+
+      - name: Attach SBOM as a signed attestation
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+        run: |
+          cosign attest --yes \
+            --predicate sbom.cyclonedx.json \
+            --type cyclonedx \
+            ${ECR_REGISTRY}/${ECR_REPOSITORY}:${{ github.sha }}
 
       - name: Update image tag in GitOps repo
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
