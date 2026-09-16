@@ -231,5 +231,9 @@ jobs:
           git config user.name "atul-devops-gitops-bot-1[bot]"
           git config user.email "atul-devops-gitops-bot-1[bot]@users.noreply.github.com"
           git add manifests/deployment.yaml
-          git commit -m "Update poc-application image to ${{ github.sha }}"
-          git push
+          if git diff --cached --quiet; then
+            echo "No changes to commit — image tag already up to date."
+          else
+            git commit -m "Update poc-application image to ${{ github.sha }}"
+            git push
+          fi
