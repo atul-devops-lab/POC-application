@@ -108,13 +108,22 @@ jobs:
         id: check-image
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          if aws ecr describe-images \
+          set +e
+          aws ecr describe-images \
             --repository-name ${{ env.ECR_REPOSITORY }} \
             --image-ids imageTag=${{ github.sha }} \
-            --region ${{ env.AWS_REGION }} 2>/dev/null; then
+            --region ${{ env.AWS_REGION }} > describe_output.json 2> describe_error.log
+          STATUS=$?
+          set -e
+
+          if [ $STATUS -eq 0 ]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
+          elif grep -q "ImageNotFoundException" describe_error.log; then
             echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Unexpected error checking image existence:"
+            cat describe_error.log
+            exit 1
           fi
 
       - name: Tag and push (same image that was scanned — no rebuild)
@@ -125,26 +134,81 @@ jobs:
           docker tag poc-application:${{ github.sha }} $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
 
+      - name: Get image digest
+        id: get-digest
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          DIGEST=$(aws ecr describe-images \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --image-ids imageTag=${{ github.sha }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'imageDetails[0].imageDigest' --output text)
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "sig_tag=$(echo $DIGEST | sed 's/sha256:/sha256-/').sig" >> "$GITHUB_OUTPUT"
+          echo "att_tag=$(echo $DIGEST | sed 's/sha256:/sha256-/').att" >> "$GITHUB_OUTPUT"
+
+      - name: Check if signature already exists
+        id: check-sig
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          set +e
+          aws ecr describe-images \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --image-ids imageTag=${{ steps.get-digest.outputs.sig_tag }} \
+            --region ${{ env.AWS_REGION }} > /dev/null 2> describe_error.log
+          STATUS=$?
+          set -e
+
+          if [ $STATUS -eq 0 ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          elif grep -q "ImageNotFoundException" describe_error.log; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            cat describe_error.log
+            exit 1
+          fi
+
       - name: Install Cosign
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: sigstore/cosign-installer@v3
 
       - name: Sign image (keyless, via GitHub OIDC)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.check-sig.outputs.exists == 'false'
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
         run: |
-          cosign sign --yes ${ECR_REGISTRY}/${ECR_REPOSITORY}:${{ github.sha }}
+          cosign sign --yes ${ECR_REGISTRY}/${ECR_REPOSITORY}@${{ steps.get-digest.outputs.digest }}
+
+      - name: Check if attestation already exists
+        id: check-att
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          set +e
+          aws ecr describe-images \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --image-ids imageTag=${{ steps.get-digest.outputs.att_tag }} \
+            --region ${{ env.AWS_REGION }} > /dev/null 2> describe_error.log
+          STATUS=$?
+          set -e
+
+          if [ $STATUS -eq 0 ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          elif grep -q "ImageNotFoundException" describe_error.log; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            cat describe_error.log
+            exit 1
+          fi
 
       - name: Attach SBOM as a signed attestation
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.check-att.outputs.exists == 'false'
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
         run: |
           cosign attest --yes \
             --predicate sbom.cyclonedx.json \
             --type cyclonedx \
-            ${ECR_REGISTRY}/${ECR_REPOSITORY}:${{ github.sha }}
+            ${ECR_REGISTRY}/${ECR_REPOSITORY}@${{ steps.get-digest.outputs.digest }}
 
       - name: Generate GitHub App token for GitOps push
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
